@@ -193,7 +193,7 @@ export default function App() {
     setSaving(false);
   }
 
-
+async function guardarRes() {
     setSaving(true);
     const nuevosDatos = {...resultados,...resTemp};
     await db("resultados?id=eq.1", {
@@ -202,7 +202,7 @@ export default function App() {
       body: JSON.stringify({ datos: nuevosDatos }),
     });
     setResultados(nuevosDatos);
-    setResTemp({}); setMsg("✓ Resultados guardados");
+    setResTemp({}); setMsg("✓ Resultados guardados");}
     setSaving(false);
   }
 
