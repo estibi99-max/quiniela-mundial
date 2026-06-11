@@ -124,6 +124,9 @@ export default function App() {
   const [bounce, setBounce] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [adminTab, setAdminTab] = useState("resultados");
+  const [editando, setEditando] = useState(null);
+  const [predsEdit, setPredsEdit] = useState({});
 
   const totalPozo = participantes.length * CUOTA;
   const premio = totalPozo;
@@ -183,7 +186,26 @@ export default function App() {
     else setAdminErr(true);
   }
 
-  async function guardarRes() {
+  async function borrarParticipante(nombreP) {
+    if (!window.confirm(`¿Borrar la quiniela de ${nombreP}?`)) return;
+    setSaving(true);
+    await db(`participantes?nombre=eq.${encodeURIComponent(nombreP)}`, { method:"DELETE", prefer:"return=minimal" });
+    setParticipantes(prev=>prev.filter(p=>p.nombre!==nombreP));
+    setMsg(`✓ Quiniela de ${nombreP} borrada`);
+    setSaving(false);
+  }
+
+  async function guardarEdicion() {
+    setSaving(true);
+    await db(`participantes?nombre=eq.${encodeURIComponent(editando.nombre)}`, {
+      method:"PATCH", prefer:"return=minimal",
+      body: JSON.stringify({ predicciones: predsEdit }),
+    });
+    setParticipantes(prev=>prev.map(p=>p.nombre===editando.nombre?{...p,predicciones:{...predsEdit}}:p));
+    setMsg(`✓ Quiniela de ${editando.nombre} actualizada`);
+    setEditando(null);
+    setSaving(false);
+  }
     setSaving(true);
     const nuevosDatos = {...resultados,...resTemp};
     await db("resultados?id=eq.1", {
@@ -526,67 +548,167 @@ export default function App() {
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:20}}>⚙️</span>
-                  <p style={{fontSize:16,fontWeight:600}}>Registrar resultados</p>
+                  <p style={{fontSize:16,fontWeight:600}}>Panel admin</p>
                 </div>
-                <button onClick={()=>{setAdminOk(false);setAdminInput("");setVista("inicio");}}
+                <button onClick={()=>{setAdminOk(false);setAdminInput("");setVista("inicio");setAdminTab("resultados");setEditando(null);}}
                   style={{fontSize:12,padding:"6px 14px",borderRadius:8,border:".5px solid rgba(255,80,80,.4)",background:"rgba(255,80,80,.1)",color:"#ff8080",cursor:"pointer",fontFamily:"inherit"}}>
                   🔒 Cerrar sesión
                 </button>
               </div>
 
-              <div className="gtabs">
-                {FASES.map(g=>{
-                  const pf=PARTIDOS.filter(p=>p.fase===g);
-                  const h=pf.filter(p=>resultados[p.id]||resTemp[p.id]).length;
-                  const done=h===pf.length;
-                  return (
-                    <button key={g} className={`gtab ${grupoActivo===g?"gtab-on":done?"gtab-done":"gtab-off"}`} onClick={()=>setGrupoActivo(g)}>
-                      {done?"✓ ":""}{g}{!done&&` ${h}/6`}
-                    </button>
-                  );
-                })}
+              {/* Tabs admin */}
+              <div style={{display:"flex",gap:4,marginBottom:16,background:"rgba(255,255,255,.04)",borderRadius:12,padding:4}}>
+                {[["resultados","⚽ Resultados"],["quinielas","👥 Quinielas"]].map(([t,l])=>(
+                  <button key={t} onClick={()=>setAdminTab(t)} style={{flex:1,padding:"8px",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:500,
+                    background:adminTab===t?"#C8102E":"transparent",color:adminTab===t?"#fff":"rgba(255,255,255,.5)"}}>
+                    {l}
+                  </button>
+                ))}
               </div>
 
-              <div className="card">
-                <div className="card-hd">
-                  <span style={{fontSize:13,fontWeight:600}}>Grupo {grupoActivo}</span>
-                  <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                    {GRUPOS_INFO[grupoActivo].map((eq,i)=>(
-                      <span key={eq}>{fl(eq)}{i<3&&<span className="vs">·</span>}</span>
-                    ))}
+              {/* TAB RESULTADOS */}
+              {adminTab==="resultados" && (
+                <div>
+                  <div className="gtabs">
+                    {FASES.map(g=>{
+                      const pf=PARTIDOS.filter(p=>p.fase===g);
+                      const h=pf.filter(p=>resultados[p.id]||resTemp[p.id]).length;
+                      const done=h===pf.length;
+                      return (
+                        <button key={g} className={`gtab ${grupoActivo===g?"gtab-on":done?"gtab-done":"gtab-off"}`} onClick={()=>setGrupoActivo(g)}>
+                          {done?"✓ ":""}{g}{!done&&` ${h}/6`}
+                        </button>
+                      );
+                    })}
                   </div>
-                </div>
-                {PARTIDOS.filter(p=>p.fase===grupoActivo).map((p,i)=>{
-                  const actual=resTemp[p.id]??resultados[p.id];
-                  return (
-                    <div key={p.id} className="match">
-                      <span style={{fontSize:11,color:"rgba(255,255,255,.3)",minWidth:38,flexShrink:0}}>{p.fecha}</span>
-                      <div className="team" style={{justifyContent:"flex-end"}}>
-                        <span className="tname" style={{textAlign:"right"}}>{p.local}</span>
-                        {fl(p.local)}
-                      </div>
-                      <div className="btns3">
-                        {[{v:"local",l:"L"},{v:"empate",l:"E"},{v:"visita",l:"V"}].map(op=>(
-                          <button key={op.v} className={`opbtn ${actual===op.v?`opbtn-${op.l}`:"opbtn-off"}`}
-                            onClick={()=>setResTemp(r=>({...r,[p.id]:op.v}))}>{op.l}</button>
+                  <div className="card">
+                    <div className="card-hd">
+                      <span style={{fontSize:13,fontWeight:600}}>Grupo {grupoActivo}</span>
+                      <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                        {GRUPOS_INFO[grupoActivo].map((eq,i)=>(
+                          <span key={eq}>{fl(eq)}{i<3&&<span className="vs">·</span>}</span>
                         ))}
                       </div>
-                      <div className="team">
-                        {fl(p.visitante)}
-                        <span className="tname">{p.visitante}</span>
-                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                    {PARTIDOS.filter(p=>p.fase===grupoActivo).map((p,i)=>{
+                      const actual=resTemp[p.id]??resultados[p.id];
+                      return (
+                        <div key={p.id} className="match">
+                          <span style={{fontSize:11,color:"rgba(255,255,255,.3)",minWidth:38,flexShrink:0}}>{p.fecha}</span>
+                          <div className="team" style={{justifyContent:"flex-end"}}>
+                            <span className="tname" style={{textAlign:"right"}}>{p.local}</span>
+                            {fl(p.local)}
+                          </div>
+                          <div className="btns3">
+                            {[{v:"local",l:"L"},{v:"empate",l:"E"},{v:"visita",l:"V"}].map(op=>(
+                              <button key={op.v} className={`opbtn ${actual===op.v?`opbtn-${op.l}`:"opbtn-off"}`}
+                                onClick={()=>setResTemp(r=>({...r,[p.id]:op.v}))}>{op.l}</button>
+                            ))}
+                          </div>
+                          <div className="team">
+                            {fl(p.visitante)}
+                            <span className="tname">{p.visitante}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {msg && <p className="suc">{msg}</p>}
+                  <div className="save-bar">
+                    <button className="save-btn" onClick={guardarRes} disabled={saving}
+                      style={{background:"linear-gradient(135deg,#1D9E75,#16805e)",color:"#fff",opacity:saving?0.7:1}}>
+                      {saving?"Guardando...":"Guardar resultados del Grupo "+grupoActivo}
+                    </button>
+                  </div>
+                </div>
+              )}
 
-              {msg && <p className="suc">{msg}</p>}
-              <div className="save-bar">
-                <button className="save-btn" onClick={guardarRes} disabled={saving}
-                  style={{background:"linear-gradient(135deg,#1D9E75,#16805e)",color:"#fff",opacity:saving?0.7:1}}>
-                  {saving?"Guardando...":"Guardar resultados del Grupo "+grupoActivo}
-                </button>
-              </div>
+              {/* TAB QUINIELAS */}
+              {adminTab==="quinielas" && !editando && (
+                <div>
+                  <p style={{fontSize:13,color:"rgba(255,255,255,.4)",marginBottom:12}}>Selecciona una quiniela para editar o borrar.</p>
+                  {participantes.length===0 ? (
+                    <div className="card" style={{padding:"2rem",textAlign:"center",color:"rgba(255,255,255,.35)",fontSize:14}}>No hay participantes.</div>
+                  ) : (
+                    <div className="card">
+                      {participantes.map((p,i)=>(
+                        <div key={p.nombre} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:i===0?"none":".5px solid rgba(255,255,255,.05)"}}>
+                          <span style={{fontSize:14,fontWeight:500}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":"👤"} {p.nombre}</span>
+                          <div style={{display:"flex",gap:8}}>
+                            <button onClick={()=>{setEditando(p);setPredsEdit({...p.predicciones});setGrupoActivo("A");}}
+                              style={{fontSize:12,padding:"5px 12px",borderRadius:8,border:".5px solid rgba(55,138,221,.4)",background:"rgba(55,138,221,.1)",color:"#7bb8f5",cursor:"pointer",fontFamily:"inherit"}}>
+                              ✏️ Editar
+                            </button>
+                            <button onClick={()=>borrarParticipante(p.nombre)}
+                              style={{fontSize:12,padding:"5px 12px",borderRadius:8,border:".5px solid rgba(255,80,80,.4)",background:"rgba(255,80,80,.1)",color:"#ff8080",cursor:"pointer",fontFamily:"inherit"}}>
+                              🗑️ Borrar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {msg && <p className="suc">{msg}</p>}
+                </div>
+              )}
+
+              {/* EDITAR QUINIELA */}
+              {adminTab==="quinielas" && editando && (
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                    <button onClick={()=>setEditando(null)} style={{fontSize:12,padding:"5px 12px",borderRadius:8,border:".5px solid rgba(255,255,255,.2)",background:"transparent",color:"rgba(255,255,255,.6)",cursor:"pointer",fontFamily:"inherit"}}>
+                      ← Volver
+                    </button>
+                    <p style={{fontSize:14,fontWeight:600}}>Editando: {editando.nombre}</p>
+                  </div>
+                  <div className="gtabs">
+                    {FASES.map(g=>{
+                      const pf=PARTIDOS.filter(p=>p.fase===g);
+                      const h=pf.filter(p=>predsEdit[p.id]).length;
+                      const done=h===pf.length;
+                      return (
+                        <button key={g} className={`gtab ${grupoActivo===g?"gtab-on":done?"gtab-done":"gtab-off"}`} onClick={()=>setGrupoActivo(g)}>
+                          {done?"✓ ":""}{g}{!done&&` ${h}/6`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="card">
+                    <div className="card-hd">
+                      <span style={{fontSize:13,fontWeight:600}}>Grupo {grupoActivo}</span>
+                    </div>
+                    {PARTIDOS.filter(p=>p.fase===grupoActivo).map((p,i)=>{
+                      const val=predsEdit[p.id];
+                      return (
+                        <div key={p.id} className="match">
+                          <span style={{fontSize:11,color:"rgba(255,255,255,.3)",minWidth:38,flexShrink:0}}>{p.fecha}</span>
+                          <div className="team" style={{justifyContent:"flex-end"}}>
+                            <span className="tname" style={{textAlign:"right"}}>{p.local}</span>
+                            {fl(p.local)}
+                          </div>
+                          <div className="btns3">
+                            {[{v:"local",l:"L"},{v:"empate",l:"E"},{v:"visita",l:"V"}].map(op=>(
+                              <button key={op.v} className={`opbtn ${val===op.v?`opbtn-${op.l}`:"opbtn-off"}`}
+                                onClick={()=>setPredsEdit(pr=>({...pr,[p.id]:op.v}))}>{op.l}</button>
+                            ))}
+                          </div>
+                          <div className="team">
+                            {fl(p.visitante)}
+                            <span className="tname">{p.visitante}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {msg && <p className="suc">{msg}</p>}
+                  <div className="save-bar">
+                    <button className="save-btn" onClick={guardarEdicion} disabled={saving}
+                      style={{background:"linear-gradient(135deg,#378ADD,#2568b5)",color:"#fff",opacity:saving?0.7:1}}>
+                      {saving?"Guardando...":"💾 Guardar cambios de "+editando.nombre}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
